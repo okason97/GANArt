@@ -16,75 +16,6 @@ from skimage import io
 from IPython.display import clear_output
 import pickle
 
-class CustomDataset(data.Dataset):
-    
-    def __init__(self, dataset, transform=None):
-        super().__init__()
-        self.x = torch.from_numpy(dataset[0]).permute(0,3,1,2)
-        self.y = torch.from_numpy(dataset[1])
-        self.len = dataset[0].shape[0]
-        self.transform = transform
-
-    def __getitem__(self, index):
-        image = self.x[index]
-        label = self.y[index]
-        if self.transform:
-            image = self.transform(image)
-        return image, label
-
-    def __len__(self):
-        return self.len
-
-def load_dataset(with_val=False):
-
-    labels = os.listdir('small-wikiart')
-    n_classes = len(labels)
-
-    x_train = []
-    y_train = []
-    count = 0
-    img_count = 0
-    print('load started')
-    for label in labels:
-        for image_name in os.listdir('small-wikiart/{}'.format(label)):
-            img = io.imread('small-wikiart/{}/{}'.format(label, image_name))
-            img = (img-127.5)/127.5
-            x_train.append(img)
-            y_train.append(label)
-            img_count+=1
-        count+=1
-        print('{}[{}]'.format(count/len(labels)*100, img_count))
-    print('load finished :D')
-    y_train = np.array(y_train).reshape(-1,1)
-    x_train = np.array(x_train)
-
-    enc = preprocessing.OneHotEncoder()
-    enc.fit(y_train)
-    y_train = enc.transform(y_train).toarray()
-
-    return n_classes, x_train, y_train
-
-def orthogonal_regularization(weight):
-    '''
-    Function for computing the orthogonal regularization term for a given weight matrix.
-    '''
-    weight = weight.flatten(1)
-    return torch.norm(
-        torch.dot(weight, weight) * (torch.ones_like(weight) - torch.eye(weight.shape[0]))
-    )
-
-def show_tensor_images(image_tensor, num_images=16, size=(3, 32, 32), nrow=4, show=True):
-    '''
-    Function for visualizing images: Given a tensor of images, number of images, and
-    size per image, plots and prints the images in an uniform grid.
-    '''
-    image_tensor = (image_tensor + 1) / 2
-    image_unflat = image_tensor.detach().cpu()
-    image_grid = make_grid(image_unflat[:num_images], nrow=nrow)
-    plt.imshow(image_grid.permute(1, 2, 0).squeeze())
-    if show:
-        plt.show()
-
 class ClassConditionalBatchNorm2d(nn.Module):
     '''
     ClassConditionalBatchNorm2d Class
@@ -406,8 +337,6 @@ class ImageDatasetWrapper():
 
 if __name__ == "__main__":
     device = 'cuda'
-    # load data
-    # n_classes, x_train, y_train = load_dataset()
 
     model_dir = './generators_weights/'
     img_dir = './generated_images/'
@@ -424,8 +353,8 @@ if __name__ == "__main__":
     transforms_compose = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize(dims)])
-    # dataset = CustomDataset((x_train,y_train), transform=transforms_compose)
     print("Creating dataset object")
+    # load data
     dataset = datasets.ImageFolder(root='small-wikiart/', transform=transforms_compose)
     n_classes = len(dataset.classes)
     loader = data.DataLoader(dataset, shuffle=True, batch_size=batch_size, pin_memory=True, num_workers=4)
