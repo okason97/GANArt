@@ -16,25 +16,6 @@ from skimage import io
 from IPython.display import clear_output
 import pickle
 
-class CustomDataset(data.Dataset):
-    
-    def __init__(self, dataset, transform=None):
-        super().__init__()
-        self.x = torch.from_numpy(dataset[0]).permute(0,3,1,2)
-        self.y = torch.from_numpy(dataset[1])
-        self.len = dataset[0].shape[0]
-        self.transform = transform
-
-    def __getitem__(self, index):
-        image = self.x[index]
-        label = self.y[index]
-        if self.transform:
-            image = self.transform(image)
-        return image, label
-
-    def __len__(self):
-        return self.len
-
 class ClassConditionalBatchNorm2d(nn.Module):
     '''
     ClassConditionalBatchNorm2d Class
@@ -215,108 +196,6 @@ class Generator(nn.Module):
 
     def loss(self, dis_fake):        
         loss = -torch.mean(dis_fake)
-        return loss
-
-class DResidualBlock(nn.Module):
-    '''
-    DResidualBlock Class
-    Values:
-    in_channels: the number of channels in the input, a scalar
-    out_channels: the number of channels in the output, a scalar
-    downsample: whether to apply downsampling
-    use_preactivation: whether to apply an activation function before the first convolution
-    '''
-
-    def __init__(self, in_channels, out_channels, downsample=True, use_preactivation=False):
-        super().__init__()
-
-        self.conv1 = nn.utils.spectral_norm(nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1))
-        self.conv2 = nn.utils.spectral_norm(nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1))
-
-        self.activation = nn.ReLU()
-        self.use_preactivation = use_preactivation  # apply preactivation in all except first dblock
-
-        self.downsample = downsample    # downsample occurs in all except last dblock
-        if downsample:
-            self.downsample_fn = nn.AvgPool2d(2)
-        self.mixin = (in_channels != out_channels) or downsample
-        if self.mixin:
-            self.conv_mixin = nn.utils.spectral_norm(nn.Conv2d(in_channels, out_channels, kernel_size=1, padding=0))
-
-    def _residual(self, x):
-        if self.use_preactivation:
-            if self.mixin:
-                x = self.conv_mixin(x)
-            if self.downsample:
-                x = self.downsample_fn(x)
-        else:
-            if self.downsample:
-                x = self.downsample_fn(x)
-            if self.mixin:
-                x = self.conv_mixin(x)
-        return x
-
-    def forward(self, x):
-        # Apply preactivation if applicable
-        if self.use_preactivation:
-            h = F.relu(x)
-        else:
-            h = x
-
-        h = self.conv1(h)
-        h = self.activation(h)
-        if self.downsample:
-            h = self.downsample_fn(h)
-
-        return h + self._residual(x)
-
-class Discriminator(nn.Module):
-    '''
-    Discriminator Class
-    Values:
-    base_channels: the number of base channels, a scalar
-    n_classes: the number of image classes, a scalar
-    '''
-
-    def __init__(self, base_channels=96, n_classes=1000):
-        super().__init__()
-
-        # For adding class-conditional evidence
-        self.shared_emb = nn.utils.spectral_norm(nn.Embedding(n_classes, 8 * base_channels))
-
-        self.d_blocks = nn.Sequential(
-            DResidualBlock(3, base_channels, downsample=True, use_preactivation=False),
-            AttentionBlock(base_channels),
-
-            DResidualBlock(base_channels, 2 * base_channels, downsample=True, use_preactivation=True),
-            AttentionBlock(2 * base_channels),
-
-            DResidualBlock(2 * base_channels, 4 * base_channels, downsample=True, use_preactivation=True),
-            AttentionBlock(4 * base_channels),
-
-            DResidualBlock(4 * base_channels, 8 * base_channels, downsample=False, use_preactivation=True),
-            AttentionBlock(8 * base_channels),
-
-            nn.ReLU(inplace=True),
-        )
-        self.proj_o = nn.utils.spectral_norm(nn.Linear(8 * base_channels, 1))
-
-    def forward(self, x, y=None):
-        h = self.d_blocks(x)
-        h = torch.sum(h, dim=[2, 3])
-
-        # Class-unconditional output
-        uncond_out = self.proj_o(h)
-        if y is None:
-            return uncond_out
-
-        # Class-conditional output
-        cond_out = torch.sum(self.shared_emb(y) * h, dim=1, keepdim=True)
-        return uncond_out + cond_out
-
-    def loss(self, dis_fake, dis_real):
-        loss = torch.mean(F.relu(1. - dis_real))
-        loss += torch.mean(F.relu(1. + dis_fake))
         return loss
 
 if __name__ == "__main__":
