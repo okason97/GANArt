@@ -1,4 +1,4 @@
-* GANArt
+# GANArt
 
 To create new art you can download the model weights at https://mega.nz/file/kIAhwAyL#wsPyY8-BPnpqNQjGN2B7HiSQlCNvlNhWwT5Mo_zqVTI and execute:
 python generate_images.py
