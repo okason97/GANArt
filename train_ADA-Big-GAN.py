@@ -16,6 +16,17 @@ from skimage import io
 from IPython.display import clear_output
 import pickle
 
+def ortho(model, strength=1e-4, blacklist=[]):
+  with torch.no_grad():
+    for param in model.parameters():
+      # Only apply this to parameters with at least 2 axes, and not in the blacklist
+      if len(param.shape) < 2 or any([param is item for item in blacklist]):
+        continue
+      w = param.view(param.shape[0], -1)
+      grad = (2 * torch.mm(torch.mm(w, w.t()) 
+              * (1. - torch.eye(w.shape[0], device=w.device)), w))
+      param.grad.data += strength * grad.view(param.shape)
+
 class ClassConditionalBatchNorm2d(nn.Module):
     '''
     ClassConditionalBatchNorm2d Class
@@ -376,6 +387,8 @@ if __name__ == "__main__":
     base_channels = 64
     z_dim = 120
     shared_dim = 128
+    ortho_reg = False
+    ortho_strength = 1e-4
     generator = Generator(base_channels=base_channels, bottom_width=8, z_dim=z_dim, shared_dim=shared_dim, n_classes=n_classes).to(device)
     discriminator = Discriminator(base_channels=base_channels, n_classes=n_classes).to(device)
     
@@ -460,6 +473,10 @@ if __name__ == "__main__":
                 disc_loss = discriminator.loss(disc_fake_pred, disc_real_pred)
                 # Update gradients
                 disc_loss.backward()
+
+                if ortho_reg:
+                    ortho(discriminator, ortho_strength)
+
                 # Update optimizer
                 disc_opt.step()
 
@@ -474,6 +491,10 @@ if __name__ == "__main__":
             gen_loss =  generator.loss(disc_fake_pred)
             # Update gradients
             gen_loss.backward()
+
+            if ortho_reg:
+                ortho(generator, ortho_strength, blacklist=[param for param in generator.shared_emb.parameters()])
+
             # Update optimizer
             gen_opt.step()
 
