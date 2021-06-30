@@ -2,4 +2,6 @@
 /generated_new_images
 /saved_variables
 /small-wikiart
+/generators_weights
 *.png
+*.state_dict
